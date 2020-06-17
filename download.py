@@ -32,6 +32,7 @@ def remove_special_chars(title: str):
     new_title = re.sub(rstr, "", title)
     return new_title
 
+
 def read_file(filename):
     f = open(filename, 'r')
     return f.read()
@@ -40,6 +41,7 @@ def read_file(filename):
 stock_list = read_file('StockToAdd.txt').split(',')
 
 
+# 请求头
 def get_user_agent():
     user_agent_list = [
         'Mozilla/5.0 (Windows NT 6.2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/28.0.1464.0 Safari/537.36',
@@ -58,63 +60,84 @@ def get_user_agent():
     return user_agent
 
 
-for stock in stock_list:
-    for page_no in range(1, 10):
-        url = "http://reportapi.eastmoney.com/report/list?cb=&pageNo={}&pageSize=80&" \
-              "code={}&industryCode=*&industry=*&rating=*&ratingchange=*&" \
-              "beginTime=2016-1-1&endTime=2020-6-17&fields=&qType=0&_="
-        url = url.format(page_no, stock)
-        print(url)
-        user_agent = get_user_agent()
-        req = urllib.request.Request(url, headers=user_agent)
-        sout = request.urlopen(req, timeout=200)
-        sout = sout.read().decode("utf8")
+def download_paper(use_proxy=True):
+    for stk_id in stock_list:
+        for page_no in range(1, 10):
+            url = "http://reportapi.eastmoney.com/report/list?cb=&pageNo={}&pageSize=80&" \
+                  "code={}&industryCode=*&industry=*&rating=*&ratingchange=*&" \
+                  "beginTime=2016-1-1&endTime=2020-6-17&fields=&qType=0&_="
+            url = url.format(page_no, stk_id)
 
-        for i in range(len(sout)):
-            if sout[i:i + 4] == 'data':
-                sout = sout[i:-1]
-        sout = '{"' + sout + '}'  # 增加json头和尾方便解析
+            user_agent = get_user_agent()
 
-        decode_json = json.loads(sout)
-        report_data_list = decode_json["data"]
-        download_list = []
-        for j in range(0, len(report_data_list)):
-            '''
-            attachPages: 报告页数，可以根据这个变量筛选深度报告(>10)
-            encodeUrl: 要下载的pdf尾缀
-            orgSName: 机构名称
-            '''
-            # if report_data_list[j]['publishDate'][:10] > '2017-01-26':
-            #     continue
-            # 剔除10页以下的研报
-            if report_data_list[j]['attachPages'] <= MIN_PAPER_SIZE:
-                continue
-            url = "http://data.eastmoney.com/report/zw_stock.jshtml?encodeUrl=" + \
-                  report_data_list[j]['encodeUrl']
-            req = urllib.request.Request(url=url, headers=user_agent)
-            ret = urllib.request.urlopen(req, timeout=200)
-            content = ret.read()
+            if use_proxy:
+                # 设置代理
+                proxy = '114.98.26.104:4216'  # 使用代理
+                proxy_values = "%(ip)s" % {'ip': proxy}
+                proxies = {
+                    'http': 'http://' + proxy_values,
+                    'https': 'https://' + proxy_values
+                }
+                handler = urllib.request.ProxyHandler(proxies)
+                opener = urllib.request.build_opener(handler)
 
-            soup = BeautifulSoup(content, 'lxml')
-            # 找到所有的超链接，然后找到a的子链接是带有pdf前缀的
-            for a in soup.findAll('a', href=True):
-                if re.findall('http://pdf', a['href']):
-                    publish_date = report_data_list[j]['publishDate'][:10].replace('-', '')
-                    stock_name = report_data_list[j]['stockName']
-                    org_name = report_data_list[j]['orgSName']
-                    title = remove_special_chars(report_data_list[j]['title'])
-                    download_list.append(a['href'])
-                    file_path = 'report/{}_{}/'.format(str(stock), stock_name)
-                    file_name = '{}_{}_{}_{}.pdf'.format(publish_date, org_name, stock_name, title)
+                req = request.Request(url, headers=user_agent)
+                sout = opener.open(req, timeout=200)
+                sout = sout.read().decode("utf8")
+            else:
+                req = urllib.request.Request(url, headers=user_agent)
+                sout = request.urlopen(req, timeout=200)
+                sout = sout.read().decode("utf8")
 
-                    # 检测是否为空
-                    if not os.path.exists(file_path):
-                        os.mkdir(file_path)
-                    # 检测是否已经有该文件
-                    if os.path.exists(file_path + file_name):
+            for i in range(len(sout)):
+                if sout[i:i + 4] == 'data':
+                    sout = sout[i:-1]
+            sout = '{"' + sout + '}'  # 增加json头和尾方便解析
+
+            decode_json = json.loads(sout)
+            report_data_list = decode_json["data"]
+            download_list = []
+            for j in range(0, len(report_data_list)):
+                '''
+                attachPages: 报告页数，可以根据这个变量筛选深度报告(>10)
+                encodeUrl: 要下载的pdf尾缀
+                orgSName: 机构名称
+                '''
+                # if report_data_list[j]['publishDate'][:10] > '2017-01-26':
+                #     continue
+                # 剔除10页以下的研报
+                if report_data_list[j]['attachPages'] <= MIN_PAPER_SIZE:
+                    continue
+                url = "http://data.eastmoney.com/report/zw_stock.jshtml?encodeUrl=" + \
+                      report_data_list[j]['encodeUrl']
+                req = urllib.request.Request(url=url, headers=user_agent)
+                ret = urllib.request.urlopen(req, timeout=200)
+                content = ret.read()
+
+                soup = BeautifulSoup(content, 'lxml')
+                # 找到所有的超链接，然后找到a的子链接是带有pdf前缀的
+                for a in soup.findAll('a', href=True):
+                    if re.findall('http://pdf', a['href']):
+                        publish_date = report_data_list[j]['publishDate'][:10].replace('-', '')
+                        stock_name = report_data_list[j]['stockName']
+                        org_name = report_data_list[j]['orgSName']
+                        title = remove_special_chars(report_data_list[j]['title'])
+                        download_list.append(a['href'])
+                        file_path = 'report/{}_{}/'.format(stock_name, str(stk_id))
+                        file_name = '{}_{}_{}_{}.pdf'.format(publish_date, org_name, stock_name, title)
+
+                        # 检测是否为空
+                        if not os.path.exists(file_path):
+                            os.mkdir(file_path)
+                        # 检测是否已经有该文件
+                        if os.path.exists(file_path + file_name):
+                            break
+                        else:
+                            print('downloading', publish_date, title)
+                            print('=============')
+                            urllib.request.urlretrieve(a['href'], file_path + file_name)
                         break
-                    else:
-                        print('downloading', publish_date, title)
-                        print('=============')
-                        urllib.request.urlretrieve(a['href'], file_path + file_name)
-                    break
+
+
+if __name__ == '__main__':
+    download_paper()
