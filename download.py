@@ -72,7 +72,8 @@ def download_paper(use_proxy=True):
 
             if use_proxy:
                 # 设置代理
-                proxy = '114.98.26.104:4216'  # 使用代理
+                print('使用代理！')
+                proxy = '183.207.194.202:3128'  # 使用代理
                 proxy_values = "%(ip)s" % {'ip': proxy}
                 proxies = {
                     'http': 'http://' + proxy_values,
@@ -84,8 +85,10 @@ def download_paper(use_proxy=True):
                 req = request.Request(url, headers=user_agent)
                 sout = opener.open(req, timeout=200)
                 sout = sout.read().decode("utf8")
+                print('代理加载成功')
             else:
-                req = urllib.request.Request(url, headers=user_agent)
+                print('不使用代理...')
+                req = request.Request(url, headers=user_agent)
                 sout = request.urlopen(req, timeout=200)
                 sout = sout.read().decode("utf8")
 
@@ -140,4 +143,4 @@ def download_paper(use_proxy=True):
 
 
 if __name__ == '__main__':
-    download_paper()
+    download_paper(use_proxy=True)
